@@ -19,7 +19,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Set up Xcode version
+      - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest-stable'
@@ -31,12 +31,118 @@ jobs:
           source $HOME/.cargo/env
           rustup target add aarch64-apple-ios
 
+      - name: Auto Create Xcode Project
+        run: |
+          echo "🔧 Tự động tạo Xcode Project..."
+
+          # Tạo thư mục project
+          mkdir -p SideLoader
+
+          # Di chuyển source files vào thư mục project
+          mv *.swift SideLoader/ 2>/dev/null || true
+          mv *.md SideLoader/ 2>/dev/null || true
+
+          # Tạo Info.plist
+          cat > SideLoader/Info.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>en</string>
+              <key>CFBundleExecutable</key>
+              <string>\$(EXECUTABLE_NAME)</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.sideloader.app</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>SideLoader</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIApplicationSceneManifest</key>
+              <dict>
+                  <key>UIApplicationSupportsMultipleScenes</key>
+                  <false/>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+          # Tạo project.pbxproj đơn giản (minimal)
+          mkdir -p SideLoader.xcodeproj
+          cat > SideLoader.xcodeproj/project.pbxproj << 'EOF'
+          // !$*UTF8*$!
+          {
+            archiveVersion = 1;
+            classes = {};
+            objectVersion = 60;
+            objects = {
+              /* Begin PBXBuildFile section */
+              13B07FBC1A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* main.m */; };
+              /* End PBXBuildFile section */
+
+              /* Begin PBXFileReference section */
+              13B07F961A68108700A75B9A /* SideLoader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SideLoader.app; sourceTree = BUILT_PRODUCTS_DIR; };
+              /* End PBXFileReference section */
+
+              /* Begin PBXNativeTarget section */
+              13B07F971A68108700A75B9A /* SideLoader */ = {
+                isa = PBXNativeTarget;
+                buildConfigurationList = 13B07F9E1A68108700A75B9A /* Build configuration list for PBXNativeTarget "SideLoader" */;
+                buildPhases = (
+                  13B07F9C1A68108700A75B9A /* Resources */,
+                  13B07F9D1A68108700A75B9A /* Sources */,
+                );
+                buildRules = ();
+                dependencies = ();
+                name = SideLoader;
+                productName = SideLoader;
+                productReference = 13B07F961A68108700A75B9A /* SideLoader.app */;
+                productType = "com.apple.product-type.application";
+              };
+              /* End PBXNativeTarget section */
+
+              /* Begin PBXProject section */
+              83C7F9D81A6A1E0A00A75B9A /* Project object */ = {
+                isa = PBXProject;
+                attributes = {
+                  LastUpgradeCheck = 1400;
+                };
+                buildConfigurationList = 83C7F9DB1A6A1E0A00A75B9A /* Build configuration list for PBXProject "SideLoader" */;
+                compatibilityVersion = "Xcode 3.2";
+                developmentRegion = en;
+                hasScannedForEncodings = 0;
+                knownRegions = (
+                  en,
+                  Base,
+                );
+                mainGroup = 83C7F9D71A6A1E0A00A75B9A;
+                productRefGroup = 83C7F9E11A6A1E0A00A75B9A /* Products */;
+                projectDirPath = "";
+                projectRoot = "";
+                targets = (
+                  13B07F971A68108700A75B9A /* SideLoader */,
+                );
+              };
+              /* End PBXProject section */
+            };
+            rootObject = 83C7F9D81A6A1E0A00A75B9A /* Project object */;
+          }
+          EOF
+
+          echo "✅ Đã tạo Xcode project cơ bản"
+
       - name: Build and Archive
         run: |
-          ls -R *.xcodeproj || echo "No xcodeproj found"
-          
-          # Build với fallback scheme
           xcodebuild archive \
+            -project SideLoader.xcodeproj \
             -scheme SideLoader \
             -archivePath build/SideLoader.xcarchive \
             -destination 'generic/platform=iOS' \
@@ -45,60 +151,23 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            | xcbeautify || {
-              echo "❌ Build thất bại với scheme SideLoader. Đang thử tìm scheme khác..."
-              SCHEME=$(xcodebuild -list -json | python3 -c "import sys, json; print(json.load(sys.stdin)['project']['schemes'][0])" 2>/dev/null || echo "SideLoader")
-              echo "🔄 Thử build với scheme: $SCHEME"
-              xcodebuild archive \
-                -scheme "$SCHEME" \
-                -archivePath build/SideLoader.xcarchive \
-                -destination 'generic/platform=iOS' \
-                -configuration Release \
-                CODE_SIGNING_ALLOWED=NO \
-                CODE_SIGNING_REQUIRED=NO \
-                CODE_SIGN_IDENTITY="" \
-                AD_HOC_CODE_SIGNING_ALLOWED=YES \
-                | xcbeautify
-            }
+            | xcbeautify
 
       - name: Prepare IPA
         run: |
-          echo "🔍 Đang tìm kiếm file .app..."
-
-          APP_PATH=""
-
-          # Cách 1: Tìm qua .xcarchive
+          echo "🔍 Đang tìm .app..."
           XCARCHIVE=$(find . -name "*.xcarchive" -type d | head -n 1)
-          if [ -n "$XCARCHIVE" ]; then
-            echo "✅ Tìm thấy .xcarchive tại: $XCARCHIVE"
-            APP_PATH=$(find "$XCARCHIVE/Products/Applications" -name "*.app" -type d | head -n 1)
-          fi
+          APP_PATH=$(find "$XCARCHIVE/Products/Applications" -name "*.app" -type d | head -n 1)
 
-          # Cách 2: Fallback tìm trực tiếp
           if [ -z "$APP_PATH" ]; then
-            echo "⚠️ Không tìm thấy qua .xcarchive, thử tìm .app trực tiếp..."
-            APP_PATH=$(find . -name "*.app" -type d ! -path "*/Pods/*" ! -path "*/DerivedData/*" ! -path "*/.git/*" | head -n 1)
-          fi
-
-          # Kiểm tra kết quả
-          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
-            echo "❌ LỖI: Không tìm thấy bất kỳ file .app nào để đóng gói IPA."
-            echo "📂 Cấu trúc thư mục:"
-            ls -la
-            echo "🔎 Tìm tất cả .xcarchive và .app:"
-            find . -name "*.xcarchive" -o -name "*.app" | head -30
+            echo "❌ Không tìm thấy .app"
             exit 1
           fi
 
-          echo "✅ Đã xác định app tại: $APP_PATH"
-
-          # Tạo IPA
           mkdir -p build/Payload
           cp -r "$APP_PATH" build/Payload/
-
-          echo "📦 Đang đóng gói IPA..."
           cd build && zip -r SideLoader.ipa Payload/
-          echo "✅ IPA đã được tạo tại: build/SideLoader.ipa"
+          echo "✅ IPA đã tạo: build/SideLoader.ipa"
           ls -lh SideLoader.ipa
 
       - name: Upload Artifact
@@ -106,27 +175,3 @@ jobs:
         with:
           name: SideLoader-IPA
           path: build/SideLoader.ipa
-
-  release:
-    name: Create Release
-    needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: SideLoader-IPA
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: SideLoader.ipa
-          tag_name: v${{ github.run_number }}
-          name: Release v${{ github.run_number }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
