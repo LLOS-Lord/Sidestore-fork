@@ -20,9 +20,9 @@ class MainViewModel: ObservableObject {
     
     func checkStatus() {
         self.isVPNConnected = LocalVPNManager.shared.isConnected
-        DeviceMuxer.shared.startMuxer { ready in
+        DeviceMuxer.shared.startMuxer { [weak self] ready in
             DispatchQueue.main.async {
-                self.isMuxerReady = ready
+                self?.isMuxerReady = ready
             }
         }
     }
