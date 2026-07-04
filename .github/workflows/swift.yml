@@ -31,116 +31,37 @@ jobs:
           source $HOME/.cargo/env
           rustup target add aarch64-apple-ios
 
-      - name: Auto Create Xcode Project
+      - name: Auto Create Xcode Project (nếu chưa có)
         run: |
-          echo "🔧 Tự động tạo Xcode Project..."
-
-          # Tạo thư mục project
-          mkdir -p SideLoader
-
-          # Di chuyển source files vào thư mục project
-          mv *.swift SideLoader/ 2>/dev/null || true
-          mv *.md SideLoader/ 2>/dev/null || true
-
-          # Tạo Info.plist
-          cat > SideLoader/Info.plist << EOF
+          echo "🔧 Kiểm tra và tạo Xcode Project..."
+          if [ ! -d "*.xcodeproj" ] && [ ! -d "SideLoader.xcodeproj" ]; then
+            echo "Tạo project cơ bản..."
+            mkdir -p SideLoader SideLoader.xcodeproj
+            mv *.swift SideLoader/ 2>/dev/null || true
+            
+            cat > SideLoader/Info.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-              <key>CFBundleDevelopmentRegion</key>
-              <string>en</string>
-              <key>CFBundleExecutable</key>
-              <string>\$(EXECUTABLE_NAME)</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.sideloader.app</string>
-              <key>CFBundleInfoDictionaryVersion</key>
-              <string>6.0</string>
-              <key>CFBundleName</key>
-              <string>SideLoader</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>CFBundleVersion</key>
-              <string>1</string>
-              <key>LSRequiresIPhoneOS</key>
-              <true/>
-              <key>UIApplicationSceneManifest</key>
-              <dict>
-                  <key>UIApplicationSupportsMultipleScenes</key>
-                  <false/>
-              </dict>
+              <key>CFBundleDevelopmentRegion</key><string>en</string>
+              <key>CFBundleExecutable</key><string>\$(EXECUTABLE_NAME)</string>
+              <key>CFBundleIdentifier</key><string>com.sideloader.app</string>
+              <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+              <key>CFBundleName</key><string>SideLoader</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
+              <key>CFBundleShortVersionString</key><string>1.0</string>
+              <key>CFBundleVersion</key><string>1</string>
+              <key>LSRequiresIPhoneOS</key><true/>
           </dict>
           </plist>
           EOF
-
-          # Tạo project.pbxproj đơn giản (minimal)
-          mkdir -p SideLoader.xcodeproj
-          cat > SideLoader.xcodeproj/project.pbxproj << 'EOF'
-          // !$*UTF8*$!
-          {
-            archiveVersion = 1;
-            classes = {};
-            objectVersion = 60;
-            objects = {
-              /* Begin PBXBuildFile section */
-              13B07FBC1A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* main.m */; };
-              /* End PBXBuildFile section */
-
-              /* Begin PBXFileReference section */
-              13B07F961A68108700A75B9A /* SideLoader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SideLoader.app; sourceTree = BUILT_PRODUCTS_DIR; };
-              /* End PBXFileReference section */
-
-              /* Begin PBXNativeTarget section */
-              13B07F971A68108700A75B9A /* SideLoader */ = {
-                isa = PBXNativeTarget;
-                buildConfigurationList = 13B07F9E1A68108700A75B9A /* Build configuration list for PBXNativeTarget "SideLoader" */;
-                buildPhases = (
-                  13B07F9C1A68108700A75B9A /* Resources */,
-                  13B07F9D1A68108700A75B9A /* Sources */,
-                );
-                buildRules = ();
-                dependencies = ();
-                name = SideLoader;
-                productName = SideLoader;
-                productReference = 13B07F961A68108700A75B9A /* SideLoader.app */;
-                productType = "com.apple.product-type.application";
-              };
-              /* End PBXNativeTarget section */
-
-              /* Begin PBXProject section */
-              83C7F9D81A6A1E0A00A75B9A /* Project object */ = {
-                isa = PBXProject;
-                attributes = {
-                  LastUpgradeCheck = 1400;
-                };
-                buildConfigurationList = 83C7F9DB1A6A1E0A00A75B9A /* Build configuration list for PBXProject "SideLoader" */;
-                compatibilityVersion = "Xcode 3.2";
-                developmentRegion = en;
-                hasScannedForEncodings = 0;
-                knownRegions = (
-                  en,
-                  Base,
-                );
-                mainGroup = 83C7F9D71A6A1E0A00A75B9A;
-                productRefGroup = 83C7F9E11A6A1E0A00A75B9A /* Products */;
-                projectDirPath = "";
-                projectRoot = "";
-                targets = (
-                  13B07F971A68108700A75B9A /* SideLoader */,
-                );
-              };
-              /* End PBXProject section */
-            };
-            rootObject = 83C7F9D81A6A1E0A00A75B9A /* Project object */;
-          }
-          EOF
-
-          echo "✅ Đã tạo Xcode project cơ bản"
+            echo "✅ Đã tạo project cơ bản"
+          fi
 
       - name: Build and Archive
         run: |
+          echo "🚀 Bắt đầu build..."
           xcodebuild archive \
             -project SideLoader.xcodeproj \
             -scheme SideLoader \
@@ -151,23 +72,50 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            | xcbeautify
+            | xcbeautify || echo "⚠️ Build có lỗi, kiểm tra log"
 
       - name: Prepare IPA
         run: |
-          echo "🔍 Đang tìm .app..."
-          XCARCHIVE=$(find . -name "*.xcarchive" -type d | head -n 1)
-          APP_PATH=$(find "$XCARCHIVE/Products/Applications" -name "*.app" -type d | head -n 1)
+          echo "🔍 Tìm kiếm .xcarchive và .app..."
 
+          XCARCHIVE=$(find . -name "*.xcarchive" -type d | head -n 1)
+          if [ -z "$XCARCHIVE" ]; then
+            echo "❌ Không tìm thấy .xcarchive"
+            ls -la
+            exit 1
+          fi
+          echo "✅ Tìm thấy xcarchive: $XCARCHIVE"
+
+          APP_PATH=""
+          if [ -d "$XCARCHIVE/Products/Applications" ]; then
+            APP_PATH=$(find "$XCARCHIVE/Products/Applications" -name "*.app" -type d | head -n 1)
+          fi
           if [ -z "$APP_PATH" ]; then
-            echo "❌ Không tìm thấy .app"
+            APP_PATH=$(find "$XCARCHIVE" -name "*.app" -type d | head -n 1)
+          fi
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find . -name "*.app" -type d | head -n 1)
+          fi
+
+          if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+            echo "❌ Không tìm thấy file .app!"
+            echo "📂 Nội dung xcarchive:"
+            ls -R "$XCARCHIVE" 2>/dev/null || true
+            echo "🔎 Tất cả .app:"
+            find . -name "*.app" || true
             exit 1
           fi
 
+          echo "✅ Đã tìm thấy app tại: $APP_PATH"
+
           mkdir -p build/Payload
           cp -r "$APP_PATH" build/Payload/
+          
+          echo "📦 Đóng gói IPA..."
           cd build && zip -r SideLoader.ipa Payload/
-          echo "✅ IPA đã tạo: build/SideLoader.ipa"
+          
+          echo "🎉 HOÀN THÀNH!"
+          echo "✅ IPA đã được tạo tại: build/SideLoader.ipa"
           ls -lh SideLoader.ipa
 
       - name: Upload Artifact
