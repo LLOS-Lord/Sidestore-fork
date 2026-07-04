@@ -86,7 +86,7 @@ class MainViewModel: ObservableObject {
     func fixAFC() {
         statusMessage = "Đang sửa lỗi AFC..."
         // Giả sử pairing file được lưu trong Documents
-        let path = NSSearchPathForDirectoriesInDomains(.documentDirectories, .userDomainMask, true)[0] + "/pairing.plist"
+        let path = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("pairing.plist").path
         DeviceMuxer.shared.fixAFCError(pairingFilePath: path) { success in
             DispatchQueue.main.async {
                 self.statusMessage = success ? "Đã sửa lỗi AFC. Hãy thử lại." : "Sửa lỗi AFC thất bại."
