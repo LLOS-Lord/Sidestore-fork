@@ -24,31 +24,17 @@ jobs:
       - name: Install Tools
         run: brew install xcbeautify
 
-      - name: Setup Swift Package
+      - name: Create Xcode Project
         run: |
-          echo "📦 Tạo Swift Package structure..."
-          mkdir -p Sources/SideLoader
+          echo "📦 Khởi tạo cấu trúc Xcode Project..."
+          mkdir -p SideLoader/Sources
+          mkdir -p SideLoader/Resources
           
-          # Di chuyển source files
-          mv *.swift Sources/SideLoader/ 2>/dev/null || true
+          # Di chuyển source files vào đúng chỗ
+          mv *.swift SideLoader/Sources/ 2>/dev/null || true
           
-          # Tạo entry point
-          cat > Sources/SideLoader/main.swift << 'EOF'
-          import SwiftUI
-
-          @main
-          struct SideLoaderApp: App {
-              var body: some Scene {
-                  WindowGroup {
-                      ContentView()
-                  }
-              }
-          }
-          EOF
-
-          # Info.plist
-          mkdir -p SideLoader
-          cat > SideLoader/Info.plist << 'EOF'
+          # Tạo Info.plist
+          cat > SideLoader/Resources/Info.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -60,70 +46,68 @@ jobs:
               <key>LSRequiresIPhoneOS</key><true/>
               <key>UIApplicationSceneManifest</key>
               <dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
+              <key>UILaunchScreen</key><dict/>
           </dict>
           </plist>
           EOF
 
-          # Package.swift
+          # Tạo main entry point nếu chưa có
+          if [ ! -f SideLoader/Sources/main.swift ] && [ ! -f SideLoader/Sources/SideLoaderApp.swift ]; then
+          cat > SideLoader/Sources/SideLoaderApp.swift << 'EOF'
+          import SwiftUI
+          @main
+          struct SideLoaderApp: App {
+              var body: some Scene {
+                  WindowGroup {
+                      ContentView()
+                  }
+              }
+          }
+          EOF
+          fi
+
+      - name: Build with Swift Package Manager
+        run: |
+          echo "📦 Tạo Package.swift để biên dịch..."
           cat > Package.swift << 'EOF'
           // swift-tools-version:5.9
           import PackageDescription
-
           let package = Package(
               name: "SideLoader",
               platforms: [.iOS(.v15)],
-              products: [.library(name: "SideLoader", targets: ["SideLoader"])],
+              products: [.executable(name: "SideLoader", targets: ["SideLoader"])],
               targets: [
-                  .target(
+                  .executableTarget(
                       name: "SideLoader",
-                      path: "Sources/SideLoader"
+                      path: "SideLoader/Sources"
                   )
               ]
           )
           EOF
-
-      - name: Build Archive
-        run: |
-          echo "🚀 Building with xcodebuild..."
-          xcodebuild archive \
-            -workspace . \
-            -scheme SideLoader \
-            -archivePath build/SideLoader.xcarchive \
-            -destination 'generic/platform=iOS' \
-            -configuration Release \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            | xcbeautify || {
-              echo "Trying alternative build method..."
-              xcodebuild -create-xcframework -framework build -output build || true
-            }
-
+          
+          # Build bằng swift build cho iOS Simulator (để không cần signing identity)
+          swift build -c release --triple arm64-apple-ios15.0-simulator
+          
       - name: Prepare IPA
         run: |
-          echo "🔍 Finding artifacts..."
-          XCARCHIVE=$(find . -name "*.xcarchive" -type d | head -n 1)
-          if [ -z "$XCARCHIVE" ]; then
-            echo "❌ No xcarchive"
-            ls -la
-            exit 1
-          fi
-
-          APP_PATH=$(find "$XCARCHIVE" -name "*.app" -type d | head -n 1)
-          if [ -z "$APP_PATH" ]; then
-            echo "Trying to find app elsewhere..."
-            APP_PATH=$(find . -name "*.app" -type d | head -n 1)
-          fi
-
-          if [ -z "$APP_PATH" ]; then
-            echo "❌ Still no .app found"
-            ls -R build 2>/dev/null || true
-            exit 1
-          fi
-
-          echo "✅ App found at: $APP_PATH"
+          echo "🔍 Chuẩn bị IPA từ build artifacts..."
           mkdir -p build/Payload
-          cp -r "$APP_PATH" build/Payload/
+          APP_BIN=$(find .build -name "SideLoader" -type f | grep release | head -n 1)
+          if [ -z "$APP_BIN" ]; then
+            echo "❌ Không tìm thấy file thực thi"
+            exit 1
+          fi
+          
+          mkdir -p build/SideLoader.app
+          cp "$APP_BIN" build/SideLoader.app/SideLoader
+          cp SideLoader/Resources/Info.plist build/SideLoader.app/Info.plist
+          
+          cp -r build/SideLoader.app build/Payload/
           cd build && zip -r SideLoader.ipa Payload/
-          ls -lh SideLoader.ipa
-          echo "✅ Success!"
+          echo "✅ Đã tạo SideLoader.ipa"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SideLoader-IPA
+          path: build/SideLoader.ipa
