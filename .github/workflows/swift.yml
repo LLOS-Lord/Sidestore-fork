@@ -24,16 +24,16 @@ jobs:
       - name: Install Tools
         run: brew install xcbeautify
 
-      - name: Prepare Project
+      - name: Setup Swift Package
         run: |
-          echo "📦 Chuẩn bị source code..."
-          mkdir -p SideLoader/Sources/SideLoader
+          echo "📦 Tạo Swift Package structure..."
+          mkdir -p Sources/SideLoader
           
-          # Di chuyển tất cả file Swift
-          mv *.swift SideLoader/Sources/SideLoader/ 2>/dev/null || true
+          # Di chuyển source files
+          mv *.swift Sources/SideLoader/ 2>/dev/null || true
           
-          # Tạo main.swift
-          cat > SideLoader/Sources/SideLoader/main.swift << 'EOF'
+          # Tạo entry point
+          cat > Sources/SideLoader/main.swift << 'EOF'
           import SwiftUI
 
           @main
@@ -46,8 +46,9 @@ jobs:
           }
           EOF
 
-          # Tạo Info.plist
-          cat > SideLoader/Sources/SideLoader/Info.plist << 'EOF'
+          # Info.plist
+          mkdir -p SideLoader
+          cat > SideLoader/Info.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -58,32 +59,34 @@ jobs:
               <key>CFBundleVersion</key><string>1</string>
               <key>LSRequiresIPhoneOS</key><true/>
               <key>UIApplicationSceneManifest</key>
-              <dict>
-                  <key>UIApplicationSupportsMultipleScenes</key><false/>
-              </dict>
+              <dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
           </dict>
           </plist>
           EOF
 
-          echo "✅ Project files prepared"
+          # Package.swift
+          cat > Package.swift << 'EOF'
+          // swift-tools-version:5.9
+          import PackageDescription
 
-      - name: Create Minimal Xcode Project
-        run: |
-          mkdir -p SideLoader.xcodeproj
-          echo "Creating minimal project.pbxproj..."
-          cat > SideLoader.xcodeproj/project.pbxproj << 'EOP'
-          {
-            "archiveVersion": "1",
-            "objectVersion": "60",
-            "objects": {}
-          }
-          EOP
+          let package = Package(
+              name: "SideLoader",
+              platforms: [.iOS(.v15)],
+              products: [.library(name: "SideLoader", targets: ["SideLoader"])],
+              targets: [
+                  .target(
+                      name: "SideLoader",
+                      path: "Sources/SideLoader"
+                  )
+              ]
+          )
+          EOF
 
-      - name: Build and Archive
+      - name: Build Archive
         run: |
-          echo "🚀 Building archive..."
+          echo "🚀 Building with xcodebuild..."
           xcodebuild archive \
-            -project SideLoader.xcodeproj \
+            -workspace . \
             -scheme SideLoader \
             -archivePath build/SideLoader.xcarchive \
             -destination 'generic/platform=iOS' \
@@ -91,29 +94,36 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            | xcbeautify || echo "Build completed with warnings"
+            | xcbeautify || {
+              echo "Trying alternative build method..."
+              xcodebuild -create-xcframework -framework build -output build || true
+            }
 
       - name: Prepare IPA
         run: |
-          echo "🔍 Finding .app..."
+          echo "🔍 Finding artifacts..."
           XCARCHIVE=$(find . -name "*.xcarchive" -type d | head -n 1)
           if [ -z "$XCARCHIVE" ]; then
-            echo "❌ No xcarchive found"
+            echo "❌ No xcarchive"
             ls -la
             exit 1
           fi
 
           APP_PATH=$(find "$XCARCHIVE" -name "*.app" -type d | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "❌ No .app found in archive"
-            ls -R "$XCARCHIVE" || true
+            echo "Trying to find app elsewhere..."
+            APP_PATH=$(find . -name "*.app" -type d | head -n 1)
+          fi
+
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ Still no .app found"
+            ls -R build 2>/dev/null || true
             exit 1
           fi
 
-          echo "✅ Found: $APP_PATH"
+          echo "✅ App found at: $APP_PATH"
           mkdir -p build/Payload
           cp -r "$APP_PATH" build/Payload/
           cd build && zip -r SideLoader.ipa Payload/
           ls -lh SideLoader.ipa
-          echo "✅ IPA created!"
+          echo "✅ Success!"
