@@ -27,13 +27,18 @@ jobs:
       - name: Install Dependencies
         run: |
           brew install ldid xcbeautify
+          # Cài đặt Rust để hỗ trợ build các module mã nguồn mở nếu cần
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           source $HOME/.cargo/env
           rustup target add aarch64-apple-ios
 
       - name: Build and Archive
         run: |
-          # Sử dụng xcodebuild archive thay vì build-for-testing để tạo .app hoàn chỉnh
+          # Kiểm tra file dự án để xác định scheme chính xác
+          ls -R *.xcodeproj || echo "No xcodeproj found"
+          
+          # Thực hiện archive. Lưu ý: Nếu scheme của bạn khác 'SideLoader', hãy đổi tên ở đây.
+          # Chúng ta sẽ thử tìm scheme nếu 'SideLoader' thất bại.
           xcodebuild archive \
             -scheme SideLoader \
             -archivePath build/SideLoader.xcarchive \
@@ -42,13 +47,49 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            | xcbeautify
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            | xcbeautify || {
+              echo "❌ Build thất bại với scheme SideLoader. Đang thử tìm scheme khác..."
+              SCHEME=$(xcodebuild -list -json | python3 -c "import sys, json; print(json.load(sys.stdin)['project']['schemes'][0])")
+              echo "🔄 Thử build với scheme: $SCHEME"
+              xcodebuild archive \
+                -scheme "$SCHEME" \
+                -archivePath build/SideLoader.xcarchive \
+                -destination 'generic/platform=iOS' \
+                -configuration Release \
+                CODE_SIGNING_ALLOWED=NO \
+                CODE_SIGNING_REQUIRED=NO \
+                CODE_SIGN_IDENTITY="" \
+                AD_HOC_CODE_SIGNING_ALLOWED=YES \
+                | xcbeautify
+            }
 
       - name: Prepare IPA
         run: |
+          # Tìm kiếm file .app một cách triệt để trong thư mục build
+          echo "🔍 Đang tìm kiếm file .app..."
+          APP_PATH=$(find build/SideLoader.xcarchive/Products/Applications -name "*.app" -type d | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ Không tìm thấy file .app trong Products/Applications. Thử tìm toàn bộ thư mục build..."
+            APP_PATH=$(find build -name "*.app" -type d | grep -v "Pods" | head -n 1)
+          fi
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ LỖI: Không tìm thấy bất kỳ file .app nào để đóng gói IPA."
+            ls -R build
+            exit 1
+          fi
+          
+          echo "✅ Đã xác định app tại: $APP_PATH"
+          
+          # Tạo cấu trúc IPA chuẩn
           mkdir -p build/Payload
-          cp -r build/SideLoader.xcarchive/Products/Applications/SideLoader.app build/Payload/
+          cp -r "$APP_PATH" build/Payload/
+          
+          # Đóng gói IPA
           cd build && zip -r SideLoader.ipa Payload/
+          echo "✅ IPA đã được tạo tại: build/SideLoader.ipa"
           
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
