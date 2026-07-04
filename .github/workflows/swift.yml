@@ -17,40 +17,37 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - name: Set up Xcode version
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: 'latest-stable'
 
-      - name: Cache Swift Packages
-        uses: actions/cache@v3
-        with:
-          path: .build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
-
-      - name: Install Dependencies (Minimuxer & Rust)
+      - name: Install Dependencies
         run: |
+          brew install ldid xcbeautify
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           source $HOME/.cargo/env
           rustup target add aarch64-apple-ios
-          # Logic build minimuxer nếu cần
-          # cd minimuxer && make build
 
-      - name: Build App
+      - name: Build and Archive
         run: |
-          xcodebuild build-for-testing \
+          # Sử dụng xcodebuild archive thay vì build-for-testing để tạo .app hoàn chỉnh
+          xcodebuild archive \
             -scheme SideLoader \
+            -archivePath build/SideLoader.xcarchive \
             -destination 'generic/platform=iOS' \
             -configuration Release \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            | xcbeautify
 
-      - name: Archive IPA
+      - name: Prepare IPA
         run: |
           mkdir -p build/Payload
-          cp -r build/Release-iphoneos/SideLoader.app build/Payload/
+          cp -r build/SideLoader.xcarchive/Products/Applications/SideLoader.app build/Payload/
           cd build && zip -r SideLoader.ipa Payload/
           
       - name: Upload Artifact
@@ -62,8 +59,10 @@ jobs:
   release:
     name: Create Release
     needs: build
-    if: github.event_name == 'push' && contains(github.ref, 'main')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download Artifact
         uses: actions/download-artifact@v4
