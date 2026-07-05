@@ -19,7 +19,12 @@ jobs:
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.0'
+          # FIX: không pin cứng '16.0' nữa — từ 15/6/2026 nhãn macos-latest đang
+          # migrate sang image macOS 26, image này chỉ có sẵn Xcode 26.x, không còn
+          # Xcode 16.0 -> setup-xcode fail ngay với lỗi "Could not find Xcode version
+          # that satisfied version spec: '16.0'". Dùng latest-stable để luôn khớp với
+          # bản Xcode ổn định mới nhất có sẵn trên runner, tránh gãy mỗi khi GitHub đổi image.
+          xcode-version: 'latest-stable'
 
       - name: Install Tools
         run: brew install xcbeautify
