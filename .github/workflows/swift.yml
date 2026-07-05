@@ -29,20 +29,24 @@ jobs:
           echo "📦 Khởi tạo cấu trúc Xcode Project..."
           mkdir -p SideLoader/Sources
           mkdir -p SideLoader/Resources
-          
+
           # Di chuyển source files vào đúng chỗ
           mv *.swift SideLoader/Sources/ 2>/dev/null || true
-          
-          # Tạo Info.plist
+
+          # FIX: bổ sung CFBundleExecutable (bắt buộc để installd nhận app hợp lệ)
+          # và MinimumOSVersion (bắt buộc khi cài lên thiết bị thật qua AltStore/SideStore)
           cat > SideLoader/Resources/Info.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
+              <key>CFBundleExecutable</key><string>SideLoader</string>
               <key>CFBundleIdentifier</key><string>com.sideloader.app</string>
               <key>CFBundleName</key><string>SideLoader</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
               <key>CFBundleShortVersionString</key><string>1.0</string>
               <key>CFBundleVersion</key><string>1</string>
+              <key>MinimumOSVersion</key><string>15.0</string>
               <key>LSRequiresIPhoneOS</key><true/>
               <key>UIApplicationSceneManifest</key>
               <dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
@@ -84,10 +88,28 @@ jobs:
               ]
           )
           EOF
-          
-          # Build bằng swift build cho iOS Simulator (để không cần signing identity)
-          swift build -c release --triple arm64-apple-ios15.0-simulator
-          
+
+          # ⚠️ FIX QUAN TRỌNG (nguyên nhân chính khiến build fail sau 4 giây):
+          # Bản cũ chỉ dùng `--triple arm64-apple-ios15.0-simulator` mà KHÔNG chỉ định --sdk.
+          # SwiftPM không tự dò được sysroot cho triple này trên nhiều bản Xcode/SwiftPM
+          # -> swiftc fail ngay lập tức khi resolve toolchain (khớp với log: fail rất nhanh).
+          #
+          # ⚠️ FIX THỨ HAI (lỗi logic nghiêm trọng dù build có qua):
+          # Build cho SIMULATOR sẽ tạo ra binary KHÔNG THỂ cài lên iPhone thật
+          # (khác kiến trúc/ABI, installd từ chối). Đổi sang triple THIẾT BỊ THẬT.
+          # Không cần signing identity thật ở bước build này — linker tự ad-hoc sign,
+          # còn việc ký thật để chạy sẽ do AltStore/SideStore xử lý khi cài đặt.
+          IOS_SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "SDK path: $IOS_SDK_PATH"
+
+          swift build -c release \
+            --triple arm64-apple-ios15.0 \
+            -Xswiftc "-sdk" -Xswiftc "$IOS_SDK_PATH" \
+            -Xswiftc "-target" -Xswiftc "arm64-apple-ios15.0" \
+            -Xcc "-isysroot" -Xcc "$IOS_SDK_PATH" \
+            -Xcc "-target" -Xcc "arm64-apple-ios15.0" \
+            2>&1 | xcbeautify
+
       - name: Prepare IPA
         run: |
           echo "🔍 Chuẩn bị IPA từ build artifacts..."
@@ -97,11 +119,14 @@ jobs:
             echo "❌ Không tìm thấy file thực thi"
             exit 1
           fi
-          
+
           mkdir -p build/SideLoader.app
           cp "$APP_BIN" build/SideLoader.app/SideLoader
           cp SideLoader/Resources/Info.plist build/SideLoader.app/Info.plist
-          
+
+          # Ad-hoc code sign để tránh lỗi "invalid binary" khi kiểm tra bundle
+          codesign -s - --force --deep build/SideLoader.app || true
+
           cp -r build/SideLoader.app build/Payload/
           cd build && zip -r SideLoader.ipa Payload/
           echo "✅ Đã tạo SideLoader.ipa"
