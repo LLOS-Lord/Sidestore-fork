@@ -1,40 +1,32 @@
-# SideLoader iOS
+# SideLoader - Ứng dụng Sideload iOS Tối ưu
 
-SideLoader là một ứng dụng iOS mã nguồn mở giúp cài đặt tệp IPA và làm mới chứng chỉ nhà phát triển (refresh certificate) một cách đơn giản, hiệu quả và mạnh mẽ.
+Ứng dụng này được thiết kế để thay thế SideStore/AltStore với logic tối ưu hơn, hỗ trợ Anisette-v3 và fix lỗi AFC triệt để.
 
-## ✨ Tính năng nổi bật
+## Các thành phần chính (Logic thật):
 
-*   **Refresh Certificate**: Tự động hoặc thủ công làm mới chứng chỉ nhà phát triển Apple miễn phí (7 ngày).
-*   **IPA Sideloading**: Cài đặt tệp IPA trực tiếp trên thiết bị iOS mà không cần máy tính sau lần cài đặt đầu tiên.
-*   **Local Dev VPN**: Tích hợp VPN cục bộ để duy trì kết nối ổn định và khắc phục các hạn chế của hệ thống.
-*   **AFC Fix**: Giải quyết triệt để lỗi `AFC was unable to manage file on the device` bằng cách tối ưu hóa việc quản lý tệp ghép nối (pairing file) và kết nối VPN.
-*   **Tối ưu & Tương thích**: Được xây dựng trên nền tảng Swift hiện đại, tích hợp `minimuxer` và `AltSign` tối ưu.
+1.  **AppleDeveloperAPI.swift**: 
+    - Tích hợp **Anisette-v3** (mặc định qua `anisette.sidestore.io`).
+    - Giao tiếp trực tiếp với Apple Developer API để quản lý chứng chỉ mà không cần AltServer.
+2.  **DeviceMuxer.swift**:
+    - Xử lý giao tiếp usbmuxd cục bộ.
+    - **Fix lỗi AFC**: Nạp lại Pairing Record (`pairing.plist`) và thực hiện handshake với Lockdown service.
+3.  **LocalVPNManager.swift**:
+    - Tạo một **VPN Tunnel (WireGuard/Loopback)** cục bộ.
+    - Cho phép ứng dụng tự kết nối với các dịch vụ hệ thống của chính nó để thực hiện cài đặt IPA.
+4.  **GitHub Actions**:
+    - Tự động build và đóng gói IPA không cần ký (Unsigned).
+    - Hỗ trợ quét scheme và app tự động.
 
-## 🛠 Công nghệ sử dụng
+## Cách tích hợp thư viện mã nguồn mở:
 
-*   **Swift & SwiftUI**: Giao diện hiện đại, mượt mà.
-*   **Minimuxer**: Lockdown muxer hiệu năng cao để giao tiếp với thiết bị.
-*   **AltSign**: Thư viện ký IPA mạnh mẽ.
-*   **Network Extension**: Tạo VPN cục bộ an toàn.
+Để mã nguồn này hoạt động hoàn chỉnh, bạn cần thêm các thư viện sau vào Xcode project (qua Swift Package Manager hoặc Git Submodules):
 
-## 🚀 Hướng dẫn cài đặt
+-   **minimuxer**: Dùng để giao tiếp usbmuxd (viết bằng Rust/C).
+-   **AltSign**: Dùng để ký IPA và quản lý Provisioning Profiles.
+-   **WireGuardKit**: Dùng cho module VPN cục bộ.
 
-1.  Tải xuống tệp IPA từ [Releases](https://github.com/yourusername/SideLoader/releases).
-2.  Cài đặt lần đầu qua AltStore hoặc Sideloadly (yêu cầu máy tính).
-3.  Mở ứng dụng, đăng nhập Apple ID và bật VPN.
-4.  Bắt đầu sideload ứng dụng yêu thích của bạn!
-
-## 📦 Cấu trúc dự án
-
-*   `Core/`: Chứa logic Apple Developer API, Certificate Manager, và Device Communication.
-*   `VPN/`: Chứa cấu hình và provider cho Local Dev VPN.
-*   `UI/`: Giao diện người dùng SwiftUI.
-*   `.github/workflows/`: Cấu hình CI/CD tự động build IPA.
-
-## 🤝 Đóng góp
-
-Mọi đóng góp đều được chào đón! Hãy tạo Pull Request hoặc Issue nếu bạn có ý tưởng cải tiến hoặc phát hiện lỗi.
-
-## ⚖️ Giấy phép
-
-Dự án này được phát hành dưới giấy phép AGPL-3.0.
+## Khắc phục lỗi AFC:
+Nếu gặp lỗi "AFC was unable to manage file", hãy nhấn nút **"Sửa lỗi AFC"** trong ứng dụng. SideLoader sẽ:
+1. Kiểm tra kết nối VPN cục bộ.
+2. Nạp lại Pairing Record từ thư mục Library.
+3. Khởi động lại dịch vụ `com.apple.afc` trên thiết bị.

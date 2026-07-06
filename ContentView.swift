@@ -63,11 +63,11 @@ struct ContentView: View {
             }
             .navigationTitle("SideLoader")
             .sheet(isPresented: $showingFilePicker) {
-                VStack {
-                    Text("IPA File Picker (Mô phỏng)")
-                    Button("Đóng") { showingFilePicker = false }
-                }
-                .padding()
+                // DocumentPicker(types: ["com.apple.itunes.ipa"]) { url in
+                //     viewModel.installIPA(url: url)
+                // }
+                Text("IPA File Picker (Mô phỏng)")
+                    .padding()
             }
         }
     }

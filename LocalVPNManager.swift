@@ -3,7 +3,8 @@ import NetworkExtension
 
 /**
  * LocalVPNManager.swift
- * Quản lý kết nối VPN cục bộ để duy trì giao tiếp với thiết bị và fix lỗi AFC.
+ * Triển khai logic VPN cục bộ để SideLoader có thể "tự kết nối" với chính nó.
+ * Cơ chế này giống SideStore, đánh lừa hệ thống rằng có một máy tính đang kết nối qua WiFi.
  */
 
 class LocalVPNManager {
@@ -12,60 +13,52 @@ class LocalVPNManager {
     
     private init() {}
     
-    /**
-     * Cấu hình VPN cục bộ (sử dụng giao thức Tunnel).
-     */
     func setupVPN(completion: @escaping (Bool, Error?) -> Void) {
-        NETunnelProviderManager.loadAllFromPreferences { [weak self] managers, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                completion(false, error)
-                return
-            }
-            
-            let vpnManager = managers?.first ?? self.manager
+        NETunnelProviderManager.loadAllFromPreferences { managers, error in
+            let vpnManager = managers?.first ?? NETunnelProviderManager()
             
             let protocolConfiguration = NETunnelProviderProtocol()
             protocolConfiguration.providerBundleIdentifier = "com.yourdomain.SideLoader.VPNProvider"
-            protocolConfiguration.serverAddress = "127.0.0.1" // VPN cục bộ
+            protocolConfiguration.serverAddress = "SideLoader-Internal"
+            
+            // Cấu hình WireGuard cục bộ (thường là file .conf được nhúng)
+            // SideStore sử dụng WireGuard để tạo tunnel tới usbmuxd
+            protocolConfiguration.providerConfiguration = [
+                "endpoint": "127.0.0.1:51820",
+                "public_key": "YOUR_PUBLIC_KEY",
+                "mtu": "1280"
+            ]
             
             vpnManager.protocolConfiguration = protocolConfiguration
-            vpnManager.localizedDescription = "SideLoader Local VPN"
+            vpnManager.localizedDescription = "SideLoader Loopback"
             vpnManager.isEnabled = true
             
             vpnManager.saveToPreferences { error in
-                if let error = error {
-                    completion(false, error)
-                } else {
-                    completion(true, nil)
-                }
+                completion(error == nil, error)
             }
         }
     }
     
-    /**
-     * Bật VPN.
-     */
     func startVPN(completion: @escaping (Error?) -> Void) {
-        do {
-            try manager.connection.startVPNTunnel()
-            completion(nil)
-        } catch {
-            completion(error)
+        NETunnelProviderManager.loadAllFromPreferences { managers, error in
+            guard let vpnManager = managers?.first else {
+                completion(NSError(domain: "VPN", code: 404, userInfo: [NSLocalizedDescriptionKey: "Chưa cấu hình VPN"]))
+                return
+            }
+            
+            do {
+                try vpnManager.connection.startVPNTunnel()
+                completion(nil)
+            } catch {
+                completion(error)
+            }
         }
     }
     
-    /**
-     * Tắt VPN.
-     */
     func stopVPN() {
         manager.connection.stopVPNTunnel()
     }
     
-    /**
-     * Kiểm tra trạng thái VPN.
-     */
     var isConnected: Bool {
         return manager.connection.status == .connected
     }

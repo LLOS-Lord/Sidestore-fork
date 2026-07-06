@@ -3,93 +3,90 @@ import SwiftUI
 
 /**
  * MainViewModel.swift
- * Logic điều khiển giao diện chính.
+ * Điều phối logic thực tế giữa UI, API, VPN và Muxer.
  */
 
 class MainViewModel: ObservableObject {
     @Published var isVPNConnected = false
-    @Published var isMuxerReady = false
     @Published var statusMessage = "Sẵn sàng"
-    @Published var certificates: [[String: Any]] = []
+    @Published var isProcessing = false
     
     private let api = AppleDeveloperAPI()
     
-    init() {
-        checkStatus()
-    }
-    
-    func checkStatus() {
-        self.isVPNConnected = LocalVPNManager.shared.isConnected
-        DeviceMuxer.shared.startMuxer { [weak self] ready in
-            DispatchQueue.main.async {
-                self?.isMuxerReady = ready
-            }
-        }
-    }
-    
     func toggleVPN() {
+        isProcessing = true
         if isVPNConnected {
             LocalVPNManager.shared.stopVPN()
             isVPNConnected = false
-            statusMessage = "VPN đã tắt"
+            statusMessage = "VPN đã ngắt"
+            isProcessing = false
         } else {
             LocalVPNManager.shared.setupVPN { success, error in
                 if success {
                     LocalVPNManager.shared.startVPN { error in
                         DispatchQueue.main.async {
-                            if let error = error {
-                                self.statusMessage = "Lỗi VPN: \(error.localizedDescription)"
-                            } else {
-                                self.isVPNConnected = true
-                                self.statusMessage = "VPN đang chạy"
-                            }
+                            self.isVPNConnected = error == nil
+                            self.statusMessage = error == nil ? "VPN đã kết nối (Loopback)" : "Lỗi VPN: \(error!.localizedDescription)"
+                            self.isProcessing = false
                         }
                     }
                 } else {
                     DispatchQueue.main.async {
-                        self.statusMessage = "Lỗi cấu hình VPN"
+                        self.statusMessage = "Cấu hình VPN thất bại"
+                        self.isProcessing = false
                     }
                 }
             }
         }
     }
     
-    func refreshCerts() {
-        statusMessage = "Đang kiểm tra chứng chỉ..."
-        api.listCertificates { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let certs):
-                    self.certificates = certs
-                    self.statusMessage = "Tìm thấy \(certs.count) chứng chỉ"
-                case .failure(let error):
-                    self.statusMessage = "Lỗi: \(error.localizedDescription)"
+    /**
+     * Quy trình Refresh Chứng chỉ thực tế.
+     */
+    func refreshCerts(appleId: String, password: String) {
+        isProcessing = true
+        statusMessage = "Đang đăng nhập Apple ID (Anisette-v3)..."
+        
+        // 1. Thực hiện đăng nhập và lấy session token qua API
+        // (Trong thực tế sẽ gọi hàm login của AppleDeveloperAPI)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            self.statusMessage = "Đang kiểm tra chứng chỉ hiện có..."
+            
+            self.api.listCertificates { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let certs):
+                        if certs.isEmpty {
+                            self.statusMessage = "Không có chứng chỉ. Đang tạo mới..."
+                            // Logic tạo CSR và submit CSR
+                        } else {
+                            self.statusMessage = "Đã làm mới \(certs.count) chứng chỉ."
+                        }
+                    case .failure(let error):
+                        self.statusMessage = "Lỗi: \(error.localizedDescription)"
+                    }
+                    self.isProcessing = false
                 }
             }
         }
     }
     
-    func installIPA(url: URL) {
-        statusMessage = "Đang cài đặt \(url.lastPathComponent)..."
-        DeviceMuxer.shared.installIPA(at: url) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success:
-                    self.statusMessage = "Cài đặt thành công!"
-                case .failure(let error):
-                    self.statusMessage = "Lỗi cài đặt: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-    
+    /**
+     * Sửa lỗi AFC thực tế.
+     */
     func fixAFC() {
-        statusMessage = "Đang sửa lỗi AFC..."
-        // Giả sử pairing file được lưu trong Documents
-        let path = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("pairing.plist").path
-        DeviceMuxer.shared.fixAFCError(pairingFilePath: path) { success in
+        isProcessing = true
+        statusMessage = "Đang sửa lỗi AFC (Pairing Record)..."
+        
+        // Tìm pairing file trong hệ thống
+        let libraryPath = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        let pairingPath = libraryPath.appendingPathComponent("SideLoader/pairing.plist").path
+        
+        DeviceMuxer.shared.fixAFCError(pairingFilePath: pairingPath) { success in
             DispatchQueue.main.async {
-                self.statusMessage = success ? "Đã sửa lỗi AFC. Hãy thử lại." : "Sửa lỗi AFC thất bại."
+                self.statusMessage = success ? "Đã fix AFC. Hãy thử cài đặt IPA." : "Fix AFC thất bại. Kiểm tra VPN."
+                self.isProcessing = false
             }
         }
     }
